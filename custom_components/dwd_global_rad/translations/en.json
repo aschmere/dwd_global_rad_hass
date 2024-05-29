@@ -9,8 +9,6 @@
         "step": {
             "user": {
                 "data": {
-                    "enable_forecast": "Enable or disable the forecast sensor.",
-                    "forecast_hours": "Number of hours to forecast into the future. Default is 4 hours.",
                     "latitude": "Latitude of the location in decimal degrees.",
                     "longitude": "Longitude of the location in decimal degrees.",
                     "name": "Name of the location. This should be unique."
