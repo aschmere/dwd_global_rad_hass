@@ -1,0 +1,13 @@
+{
+  "domain": "dwd_global_rad",
+  "name": "DWD Global Radiation Forecasts and Data",
+  "codeowners": ["@aschmere"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://www.home-assistant.io/integrations/dwd_global_rad",
+  "homekit": {},
+  "iot_class": "cloud_polling",
+  "requirements": ["dwd_global_radiation==1.1.0rc1"],
+  "ssdp": [],
+  "zeroconf": []
+}
