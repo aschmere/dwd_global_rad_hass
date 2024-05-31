@@ -1,7 +1,7 @@
 {
   "name": "DWD Global Radiation Forecasts and Data",
   "zip_release": true,
-  "filename": "dwd_global_radiation.zip",
+  "filename": "dwd_global_rad.zip",
   "render_readme": true,
   "homeassistant": "2024.5.5",
   "domains": ["sensor"],
