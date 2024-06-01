@@ -17,21 +17,13 @@ from .coordinator import (
     LocationDataUpdateCoordinator,
     MeasurementUpdateCoordinator,
 )
+from .restapi import DWDGlobalRadRESTApi
 
 # TODO List the platforms that you want to support.
 # For your initial PR, limit it to 1 platform.
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 _LOGGER = logging.getLogger(__name__)
-
-
-# async def async_setup(hass, config):
-# """Set up the DWD Global Radiation Forecasts and Data component."""
-# Use the external library
-# pylint: disable=unused-variable
-# objGlobalRadiation = dgr.GlobalRadiation()
-# Your setup code here
-#   return True
 
 
 async def update_listener(hass, entry):
@@ -48,6 +40,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     if "api_client" not in hass.data[DOMAIN]:
         hass.data[DOMAIN]["api_client"] = dgr.GlobalRadiation()
+    if "rest_api_setup" not in hass.data[DOMAIN]:
+        hass.http.register_view(DWDGlobalRadRESTApi(hass))
+        hass.data[DOMAIN]["rest_api_setup"] = True
 
     api_client = hass.data[DOMAIN]["api_client"]
     latitude = entry.data["latitude"]
