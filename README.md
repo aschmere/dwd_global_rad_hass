@@ -4,11 +4,11 @@
 ![Project State](https://img.shields.io/badge/project_state-beta-orange.svg)
 ![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen.svg)
 ## Overview
-The DWD Global Radiation Home Assistant Integration is a custom component that allows users to integrate global radiation data from the Deutscher Wetterdienst (DWD) into their Home Assistant setup. This integration provides real-time and historical radiation data, enabling enhanced home automation based on weather conditions.
+The DWD Global Radiation Home Assistant Integration is a custom component that allows users to integrate global radiation data from the Deutscher Wetterdienst (DWD) into their Home Assistant setup. This integration provides real-time and forecast radiation data, enabling enhanced home automation based on weather conditions.
 
 ## Features
-- **Real-Time Data**: Access current global radiation data from DWD.
-- **Historical Data**: Retrieve historical radiation data for analysis and trends.
+- **Measurements**: Access current global radiation measurements from DWD. Measurements are updated every 15 minutes.
+- **Forecasts**: The data provides forecasts in 1-hour steps up to 17 hours into the future. Forecasts are updated hourly.
 - **Configurable**: Easy setup and configuration through the Home Assistant UI.
 
 ## Documentation Status
