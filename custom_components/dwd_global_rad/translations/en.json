@@ -1,0 +1,22 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "This location is already configured."
+        },
+        "error": {
+            "name_exists": "A location with this name already exists."
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "latitude": "Latitude of the location in decimal degrees.",
+                    "longitude": "Longitude of the location in decimal degrees.",
+                    "name": "Name of the location. This should be unique."
+                },
+                "description": "Set up DWD Global Radiation integration.",
+                "title": "Configure your location"
+            }
+        }
+    },
+    "title": "DWD Global Radiation"
+}
