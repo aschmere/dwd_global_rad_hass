@@ -73,7 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hostname = options.get("hostname")
         port_number = options.get("port_number")
     else:
-        hostname = "localhost"
+        hostname = "homeassistant.local"
         port_number = "5001"
 
     hass.data.setdefault(DOMAIN, {})
