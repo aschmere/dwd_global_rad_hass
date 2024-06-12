@@ -216,10 +216,16 @@ class LocationDataUpdateCoordinator(DataUpdateCoordinator):
             )
             return None
 
-        if "measurements" not in measurement_data or "forecasts" not in forecast_data:
-            _LOGGER.debug(
-                "Measurement or forecast data lists are empty for %s", self.name
-            )
+        # Check if measurements and forecasts exist and are not empty
+        if (
+            "measurements" not in measurement_data
+            or not measurement_data["measurements"]
+        ):
+            _LOGGER.debug("Measurement data list is empty for %s", self.name)
+            return None
+
+        if "forecasts" not in forecast_data or not forecast_data["forecasts"]:
+            _LOGGER.debug("Forecast data list is empty for %s", self.name)
             return None
 
         self._location_data = {

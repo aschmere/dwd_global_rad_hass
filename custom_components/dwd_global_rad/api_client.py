@@ -1,4 +1,5 @@
 import logging
+import traceback
 
 import aiohttp
 
@@ -15,14 +16,18 @@ class DWDGlobalRadAPIClient:
         self.session = aiohttp.ClientSession()
         self._locations = None
         self.base_url = f"http://{self.hostname}:{self.port_number}"
+        self.debug_mode = _LOGGER.isEnabledFor(logging.DEBUG)
+        self.tracing_enabled = False  # Separate flag for tracing
 
     @property
     async def locations(self):
+        self._log_debug_info("Fetching locations property")
         if self._locations is None:
             await self.fetch_locations()
         return self._locations
 
     async def fetch_locations(self):
+        self._log_debug_info("Fetching locations")
         url = f"{self.base_url}/locations"
         async with self.session.get(url) as response:
             if response.status == 200:
@@ -32,6 +37,7 @@ class DWDGlobalRadAPIClient:
         return self._locations
 
     async def get_location_by_name(self, name: str):
+        self._log_debug_info(f"Fetching location by name: {name}")
         url = f"{self.base_url}/locations/{name}"
         async with self.session.get(url) as response:
             data = await response.json()
@@ -40,27 +46,32 @@ class DWDGlobalRadAPIClient:
             return data
 
     async def add_location(self, name: str, latitude: float, longitude: float):
+        self._log_debug_info(f"Adding location: {name}")
         url = f"{self.base_url}/locations"
         data = {"name": name, "latitude": latitude, "longitude": longitude}
         async with self.session.post(url, json=data) as response:
             return await response.json()
 
     async def fetch_forecasts(self):
+        self._log_debug_info("Fetching forecasts")
         url = f"{self.base_url}/forecasts"
         async with self.session.get(url) as response:
             return await response.json()
 
     async def fetch_measurements(self, hours: int = 3):
+        self._log_debug_info(f"Fetching measurements for {hours} hours")
         url = f"{self.base_url}/measurements?hours={hours}"
         async with self.session.get(url) as response:
             return await response.json()
 
     async def remove_location(self, name: str):
+        self._log_debug_info(f"Removing location: {name}")
         url = f"{self.base_url}/locations/{name}"
         async with self.session.delete(url) as response:
             return await response.json()
 
     async def get_status(self):
+        self._log_debug_info("Checking API server status")
         url = f"{self.base_url}/status"
         async with self.session.get(url) as response:
             if response.status == 204:
@@ -69,4 +80,13 @@ class DWDGlobalRadAPIClient:
                 return False
 
     async def close(self):
+        self._log_debug_info("Closing session")
         await self.session.close()
+
+    def _log_debug_info(self, message: str):
+        _LOGGER.debug(message)
+        if self.debug_mode and self.tracing_enabled:
+            _LOGGER.debug("Call stack:")
+            stack = traceback.format_stack()
+            for line in stack:
+                _LOGGER.debug(line.strip())
