@@ -76,11 +76,11 @@ class GlobalRadiationMeasurementSensor(AbstractGlobalRadiationSensor):
     def update_state(self, location_data):
         """Update the state and attributes based on location data."""
         if location_data:
-            self._attr_native_value = (
-                location_data["measurements"].measurement_values[0].to_dict()["sis"]
-            )
+            self._attr_native_value = location_data["measurements"][
+                "measurement_values"
+            ][0]["sis"]
             # Prepare forecasts data for presentation
-            forecasts = location_data["forecasts"].to_dict().copy()
+            forecasts = location_data["forecasts"]
             forecast_entries = [
                 {
                     "datetime": convert_to_local(entry["timestamp"]),
@@ -107,7 +107,7 @@ class GlobalRadiationMeasurementSensor(AbstractGlobalRadiationSensor):
             }
 
             # Prepare measurements data for presentation
-            measurements = location_data["measurements"].to_dict().copy()
+            measurements = location_data["measurements"]
             measurement_values = [
                 {
                     "datetime": convert_to_local(entry["timestamp"]),
@@ -133,4 +133,5 @@ class GlobalRadiationMeasurementSensor(AbstractGlobalRadiationSensor):
     async def async_update(self):
         """Fetch new state data for the sensor."""
         await super().async_update()
-        self.update_state(self.coordinator.location_data)
+        location_data = await self.coordinator.get_location_data()
+        self.update_state(location_data)

@@ -81,12 +81,15 @@ class ForecastUpdateCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
+        """Fetch data from API."""
         try:
             async with asyncio.timeout(30):
                 _LOGGER.debug("Fetching forecasts")
-                await self.hass.async_add_executor_job(self.api_client.fetch_forecasts)
-                self.async_set_updated_data(self.api_client.locations)
-                return self.api_client.locations  # Return updated data if needed
+                await self.api_client.fetch_forecasts()
+                # Assume fetch_forecasts updates self.api_client.locations
+                locations = await self.api_client.locations
+                self.async_set_updated_data(locations)
+                return locations  # Return updated data if needed
         except TimeoutError as err:
             _LOGGER.error("Timeout error fetching forecasts: %s", err)
             raise UpdateFailed(f"Timeout error fetching forecasts: {err}") from err
@@ -130,14 +133,17 @@ class MeasurementUpdateCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
+        """Fetch data from API."""
         try:
             async with asyncio.timeout(30):
                 _LOGGER.debug("Fetching measurements")
-                await self.hass.async_add_executor_job(
-                    self.api_client.fetch_measurements, 1
-                )
-                self.async_set_updated_data(self.api_client.locations)
-                return self.api_client.locations  # Return updated data if needed
+                await self.api_client.fetch_measurements(
+                    1
+                )  # Fetch measurements for the last 1 hour
+                # Assume fetch_measurements updates self.api_client.locations
+                locations = await self.api_client.locations
+                self.async_set_updated_data(locations)
+                return locations  # Return updated data if needed
         except TimeoutError as err:
             _LOGGER.error("Timeout error fetching measurements: %s", err)
             raise UpdateFailed(f"Timeout error fetching measurements: {err}") from err
@@ -189,44 +195,51 @@ class LocationDataUpdateCoordinator(DataUpdateCoordinator):
         self._location_data = None
 
         # Listen for updates from child coordinators
-        self.forecast_coordinator.async_add_listener(self._handle_update)
-        self.measurement_coordinator.async_add_listener(self._handle_update)
+        self.forecast_coordinator.async_add_listener(self._create_handle_update_task)
+        self.measurement_coordinator.async_add_listener(self._create_handle_update_task)
 
-    @property
-    def location_data(self):
+    async def get_location_data(self):
         """Fetch data for this specific location."""
-        measurement_data = self.measurement_coordinator.api_client.get_location_by_name(
+        measurement_data = (
+            await self.measurement_coordinator.api_client.get_location_by_name(
+                self.name
+            )
+        )
+        forecast_data = await self.forecast_coordinator.api_client.get_location_by_name(
             self.name
         )
-        forecast_data = self.forecast_coordinator.api_client.get_location_by_name(
-            self.name
-        )
+
         # Ensure that data is available
-        if measurement_data is None or forecast_data is None:
+        if not measurement_data or not forecast_data:
             _LOGGER.debug(
                 "Measurement or forecast data not yet available for %s", self.name
             )
             return None
 
-        if not measurement_data.measurements or not forecast_data.forecasts:
+        if "measurements" not in measurement_data or "forecasts" not in forecast_data:
             _LOGGER.debug(
                 "Measurement or forecast data lists are empty for %s", self.name
             )
             return None
+
         self._location_data = {
-            "measurements": measurement_data.measurements[0],
-            "forecasts": forecast_data.forecasts[0],
+            "measurements": measurement_data["measurements"][0],
+            "forecasts": forecast_data["forecasts"][0],
         }
         return self._location_data
 
     async def _async_update_data(self):
         """Fetch data for this specific location."""
-        return self.location_data
+        return await self.get_location_data()
 
-    def _handle_update(self):
+    async def _handle_update(self):
         """Handle updates from child coordinators."""
-        location_data = self.location_data
+        location_data = await self.get_location_data()
         if location_data:
             self.async_set_updated_data(location_data)
         else:
             _LOGGER.debug("Location data not yet available for %s", self.name)
+
+    def _create_handle_update_task(self):
+        """Create a task to handle updates from child coordinators."""
+        self.hass.async_create_task(self._handle_update())

@@ -98,8 +98,13 @@ class AbstractGlobalRadiationSensor(CoordinatorEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         if isinstance(self.coordinator, LocationDataUpdateCoordinator):
-            self.update_state(self.coordinator.location_data)
-            self.async_write_ha_state()
+            self.hass.async_create_task(self._async_handle_coordinator_update())
+
+    async def _async_handle_coordinator_update(self):
+        """Handle updated data from the coordinator asynchronously."""
+        location_data = await self.coordinator.get_location_data()
+        self.update_state(location_data)
+        self.async_write_ha_state()
 
     async def async_update(self) -> None:
         """Get the latest data and update the states."""

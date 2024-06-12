@@ -5,12 +5,15 @@ from __future__ import annotations
 
 import logging
 
+import aiohttp
 import dwd_global_radiation as dgr
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 
+from .api_client import DWDGlobalRadAPIClient
 from .const import DOMAIN
 from .coordinator import (
     ForecastUpdateCoordinator,
@@ -26,6 +29,28 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 _LOGGER = logging.getLogger(__name__)
 
 
+async def get_addon_config(hass: HomeAssistant, addon_slug: str):
+    """Fetch add-on configuration from Supervisor."""
+    supervisor_token = hass.data["hassio_user"]["access_token"]
+    if not supervisor_token:
+        raise ConfigEntryNotReady("No supervisor token found")
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"http://supervisor/addons/{addon_slug}/info"
+            headers = {"Authorization": f"Bearer {supervisor_token}"}
+            async with session.get(url, headers=headers) as response:
+                if response.status != 200:
+                    raise ConfigEntryNotReady(
+                        f"Failed to fetch add-on info: {response.status}"
+                    )
+                addon_info = await response.json()
+                options = addon_info.get("options", {})
+                return options
+    except Exception as e:
+        raise ConfigEntryNotReady(f"Error fetching add-on configuration: {e}")
+
+
 async def update_listener(hass, entry):
     """Handle options update."""
     await hass.config_entries.async_reload(entry.entry_id)
@@ -37,9 +62,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Setup with data %s", entry.data)
     # entry.async_on_unload(entry.add_update_listener(update_listener))
 
+    use_addon = False
+
+    if use_addon:
+        addon_slug = "your_addon_slug"
+        options = await get_addon_config(hass, addon_slug)
+        if not options:
+            raise ConfigEntryNotReady("No configuration found for the add-on")
+
+        hostname = options.get("hostname")
+        port_number = options.get("port_number")
+    else:
+        hostname = "192.168.2.165"
+        port_number = "5001"
+
     hass.data.setdefault(DOMAIN, {})
     if "api_client" not in hass.data[DOMAIN]:
-        hass.data[DOMAIN]["api_client"] = dgr.GlobalRadiation()
+        hass.data[DOMAIN]["api_client"] = DWDGlobalRadAPIClient(
+            hass, hostname, port_number
+        )
     if "rest_api_setup" not in hass.data[DOMAIN]:
         hass.http.register_view(DWDGlobalRadRESTApi(hass))
         hass.data[DOMAIN]["rest_api_setup"] = True
@@ -49,8 +90,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     longitude = entry.data["longitude"]
     name = entry.data["name"]
 
-    if api_client.get_location_by_name(name) is None:
-        api_client.add_location(name=name, latitude=latitude, longitude=longitude)
+    location = await api_client.get_location_by_name(name)
+    if location is None:
+        await api_client.add_location(name=name, latitude=latitude, longitude=longitude)
 
     # Initialize ForecastUpdateCoordinator
     if "forecast_coordinator" not in hass.data[DOMAIN]:
@@ -89,7 +131,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Setup platforms (e.g., sensor)
     hass.async_create_task(
-        hass.config_entries.async_forward_entry_setup(entry, "sensor")
+        hass.config_entries.async_late_forward_entry_setups(entry, ["sensor"])
     )
 
     return True
