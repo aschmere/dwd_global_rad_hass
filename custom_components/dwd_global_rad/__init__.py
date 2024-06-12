@@ -3,11 +3,13 @@
 # pylint: disable=W0511
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import aiohttp
 import dwd_global_radiation as dgr
 
+from homeassistant.components.hassio import async_get_addon_info, async_start_addon
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -62,16 +64,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Setup with data %s", entry.data)
     # entry.async_on_unload(entry.add_update_listener(update_listener))
 
-    use_addon = False
+    use_addon = True
+    addon_slug = "dwd_global_rad_api_server"
 
     if use_addon:
-        addon_slug = "your_addon_slug"
         options = await get_addon_config(hass, addon_slug)
         if not options:
             raise ConfigEntryNotReady("No configuration found for the add-on")
 
         hostname = options.get("hostname")
         port_number = options.get("port_number")
+
+        await ensure_addon_started(hass, addon_slug)
     else:
         hostname = "homeassistant.local"
         port_number = "5001"
@@ -133,6 +137,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 
     return True
+
+
+async def ensure_addon_started(hass: HomeAssistant, addon_slug: str) -> None:
+    """Ensure the add-on is started."""
+    addon_info = await async_get_addon_info(hass, addon_slug)
+    if addon_info["state"] != "started":
+        _LOGGER.debug("Starting add-on %s", addon_slug)
+        await async_start_addon(hass, addon_slug)
+        for _ in range(10):  # Retry up to 10 times
+            await asyncio.sleep(10)
+            addon_info = await async_get_addon_info(hass, addon_slug)
+            if addon_info["state"] == "started":
+                _LOGGER.debug("Add-on %s started", addon_slug)
+                return
+        raise ConfigEntryNotReady(f"Add-on {addon_slug} not started")
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
