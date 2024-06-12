@@ -55,5 +55,18 @@ class DWDGlobalRadAPIClient:
         async with self.session.get(url) as response:
             return await response.json()
 
+    async def remove_location(self, name: str):
+        url = f"{self.base_url}/locations/{name}"
+        async with self.session.delete(url) as response:
+            return await response.json()
+
+    async def get_status(self):
+        url = f"{self.base_url}/status"
+        async with self.session.get(url) as response:
+            if response.status == 204:
+                return True
+            else:
+                return False
+
     async def close(self):
         await self.session.close()
