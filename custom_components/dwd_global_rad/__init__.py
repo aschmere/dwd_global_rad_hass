@@ -18,7 +18,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api_client import DWDGlobalRadAPIClient
-from .const import DOMAIN
+from .const import ADDON_SLUG, DOMAIN
 from .coordinator import (
     ForecastUpdateCoordinator,
     LocationDataUpdateCoordinator,
@@ -50,14 +50,20 @@ async def get_addon_config(hass: HomeAssistant, addon_slug: str):
         }
 
         session = async_get_clientsession(hass)
+        _LOGGER.debug(f"Requesting add-on info from URL: {url} with headers: {headers}")
         async with session.get(url, headers=headers) as response:
+            response_text = await response.text()
+            _LOGGER.debug(
+                f"Received response status: {response.status}, body: {response_text}"
+            )
             if response.status != 200:
                 raise ConfigEntryNotReady(
-                    f"Error fetching add-on config: {response.status}"
+                    f"Error fetching add-on config: {response.status} - {response_text}"
                 )
             data = await response.json()
-            return data["data"]["options"]
+            return data["data"]
     except Exception as e:
+        _LOGGER.error(f"Error fetching add-on configuration: {e}")
         raise ConfigEntryNotReady(f"Error fetching add-on configuration: {e}")
 
 
@@ -73,17 +79,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # entry.async_on_unload(entry.add_update_listener(update_listener))
 
     use_addon = True
-    addon_slug = "dwd_global_rad_api_server"
 
     if use_addon:
-        options = await get_addon_config(hass, addon_slug)
-        if not options:
+        addon_info = await get_addon_config(hass, ADDON_SLUG)
+        if not addon_info:
             raise ConfigEntryNotReady("No configuration found for the add-on")
 
-        hostname = options.get("hostname")
-        port_number = options.get("port_number")
+        hostname = addon_info.get("hostname")
+        port_number = next(iter(addon_info.get("network", {}).values()), 5001)
 
-        await ensure_addon_started(hass, addon_slug)
+        # Ensure the add-on is started
+        await ensure_addon_started(hass, ADDON_SLUG)
     else:
         hostname = "homeassistant.local"
         port_number = "5001"
@@ -101,6 +107,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     latitude = entry.data["latitude"]
     longitude = entry.data["longitude"]
     name = entry.data["name"]
+
+    if not await wait_for_api_server(api_client):
+        raise ConfigEntryNotReady("API server not available after multiple attempts")
 
     location = await api_client.get_location_by_name(name)
     if location is None:
@@ -162,7 +171,7 @@ async def ensure_addon_started(
             # Wait a bit before checking the status again
             await asyncio.sleep(delay)
         except Exception as e:
-            _LOGGER.error("Error starting add-on %s: %s", addon_slug, e)
+            _LOGGER.error(f"Error starting add-on {addon_slug}: {e}")
             if attempt < retries - 1:
                 _LOGGER.debug("Retrying to start add-on %s", addon_slug)
                 await asyncio.sleep(delay)
@@ -220,3 +229,19 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         # If hass.data[DOMAIN] is now empty, remove it completely
         if not hass.data[DOMAIN]:
             hass.data.pop(DOMAIN)
+
+
+async def wait_for_api_server(api_client, retries=5, delay=10):
+    """Wait for the API server to be available."""
+    for attempt in range(retries):
+        try:
+            await (
+                api_client.get_status()
+            )  # Assuming get_status is a method to check the API server status
+            return True
+        except Exception as e:
+            _LOGGER.warning(
+                f"API server not available, retrying in {delay} seconds... (Attempt {attempt+1}/{retries})"
+            )
+            await asyncio.sleep(delay)
+    return False
