@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 import aiohttp
 import dwd_global_radiation as dgr
@@ -14,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api_client import DWDGlobalRadAPIClient
 from .const import DOMAIN
@@ -33,22 +35,28 @@ _LOGGER = logging.getLogger(__name__)
 
 async def get_addon_config(hass: HomeAssistant, addon_slug: str):
     """Fetch add-on configuration from Supervisor."""
-    supervisor_token = hass.data["hassio_user"]["access_token"]
-    if not supervisor_token:
-        raise ConfigEntryNotReady("No supervisor token found")
-
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"http://supervisor/addons/{addon_slug}/info"
-            headers = {"Authorization": f"Bearer {supervisor_token}"}
-            async with session.get(url, headers=headers) as response:
-                if response.status != 200:
-                    raise ConfigEntryNotReady(
-                        f"Failed to fetch add-on info: {response.status}"
-                    )
-                addon_info = await response.json()
-                options = addon_info.get("options", {})
-                return options
+        supervisor_token = os.getenv("SUPERVISOR_TOKEN")
+        if not supervisor_token:
+            _LOGGER.error("Supervisor token not found in environment variables")
+            raise ConfigEntryNotReady(
+                "Supervisor token not found in environment variables"
+            )
+
+        url = f"http://supervisor/addons/{addon_slug}/info"
+        headers = {
+            "Authorization": f"Bearer {supervisor_token}",
+            "Content-Type": "application/json",
+        }
+
+        session = async_get_clientsession(hass)
+        async with session.get(url, headers=headers) as response:
+            if response.status != 200:
+                raise ConfigEntryNotReady(
+                    f"Error fetching add-on config: {response.status}"
+                )
+            data = await response.json()
+            return data["data"]["options"]
     except Exception as e:
         raise ConfigEntryNotReady(f"Error fetching add-on configuration: {e}")
 
@@ -139,19 +147,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def ensure_addon_started(hass: HomeAssistant, addon_slug: str) -> None:
+async def ensure_addon_started(
+    hass: HomeAssistant, addon_slug: str, retries=10, delay=10
+) -> None:
     """Ensure the add-on is started."""
-    addon_info = await async_get_addon_info(hass, addon_slug)
-    if addon_info["state"] != "started":
+    for attempt in range(retries):
+        addon_info = await async_get_addon_info(hass, addon_slug)
+        if addon_info["state"] == "started":
+            _LOGGER.debug("Add-on %s is already started", addon_slug)
+            return
         _LOGGER.debug("Starting add-on %s", addon_slug)
-        await async_start_addon(hass, addon_slug)
-        for _ in range(10):  # Retry up to 10 times
-            await asyncio.sleep(10)
-            addon_info = await async_get_addon_info(hass, addon_slug)
-            if addon_info["state"] == "started":
-                _LOGGER.debug("Add-on %s started", addon_slug)
-                return
-        raise ConfigEntryNotReady(f"Add-on {addon_slug} not started")
+        try:
+            await async_start_addon(hass, addon_slug)
+            # Wait a bit before checking the status again
+            await asyncio.sleep(delay)
+        except Exception as e:
+            _LOGGER.error("Error starting add-on %s: %s", addon_slug, e)
+            if attempt < retries - 1:
+                _LOGGER.debug("Retrying to start add-on %s", addon_slug)
+                await asyncio.sleep(delay)
+            else:
+                raise ConfigEntryNotReady(f"Error starting add-on {addon_slug}: {e}")
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

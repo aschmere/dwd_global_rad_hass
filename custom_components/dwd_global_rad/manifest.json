@@ -7,8 +7,8 @@
   "documentation": "https://github.com/aschmere/dwd_global_rad_hass",
   "homekit": {},
   "iot_class": "cloud_polling",
-  "requirements": ["dwd_global_radiation==1.1.0rc6"],
+  "requirements": [],
   "ssdp": [],
-  "version": "0.2.5-beta",
+  "version": "0.2.6-beta",
   "zeroconf": []
 }
