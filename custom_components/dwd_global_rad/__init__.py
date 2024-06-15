@@ -78,7 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Setup with data %s", entry.data)
     # entry.async_on_unload(entry.add_update_listener(update_listener))
 
-    use_addon = False
+    use_addon = True
 
     if use_addon:
         addon_info = await get_addon_config(hass, ADDON_SLUG)
