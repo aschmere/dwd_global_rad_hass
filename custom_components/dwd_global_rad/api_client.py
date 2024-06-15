@@ -70,6 +70,15 @@ class DWDGlobalRadAPIClient:
         async with self.session.delete(url) as response:
             return await response.json()
 
+    async def get_forecast_animated_gif(self):
+        self._log_debug_info("Fetching forecast animated GIF")
+        url = f"{self.base_url}/process"
+        async with self.session.post(url) as response:
+            if response.status == 200:
+                return await response.read()
+            else:
+                return None
+
     async def get_status(self):
         self._log_debug_info("Checking API server status")
         url = f"{self.base_url}/status"

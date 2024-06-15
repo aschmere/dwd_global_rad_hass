@@ -12,7 +12,7 @@ import dwd_global_radiation as dgr
 
 from homeassistant.components.hassio import async_get_addon_info, async_start_addon
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
+from homeassistant.const import CONF_NAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -78,7 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Setup with data %s", entry.data)
     # entry.async_on_unload(entry.add_update_listener(update_listener))
 
-    use_addon = True
+    use_addon = False
 
     if use_addon:
         addon_info = await get_addon_config(hass, ADDON_SLUG)
@@ -91,7 +91,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Ensure the add-on is started
         await ensure_addon_started(hass, ADDON_SLUG)
     else:
-        hostname = "homeassistant.local"
+        hostname = "192.168.2.165"
         port_number = "5001"
 
     hass.data.setdefault(DOMAIN, {})
@@ -104,16 +104,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN]["rest_api_setup"] = True
 
     api_client = hass.data[DOMAIN]["api_client"]
-    latitude = entry.data["latitude"]
-    longitude = entry.data["longitude"]
-    name = entry.data["name"]
-
     if not await wait_for_api_server(api_client):
         raise ConfigEntryNotReady("API server not available after multiple attempts")
-
-    location = await api_client.get_location_by_name(name)
-    if location is None:
-        await api_client.add_location(name=name, latitude=latitude, longitude=longitude)
 
     # Initialize ForecastUpdateCoordinator
     if "forecast_coordinator" not in hass.data[DOMAIN]:
@@ -132,26 +124,58 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.data[DOMAIN][
             "measurement_coordinator"
         ].async_config_entry_first_refresh()
+    # Ensure camera entity is created
+    if not any(
+        e.data.get("category") == "forecast_camera"
+        for e in hass.config_entries.async_entries(DOMAIN)
+    ):
+        forecast_camera_entry = {
+            CONF_NAME: "DWD Global Radiation Forecast Camera",
+            "category": "forecast_camera",
+            "unique_id": "dwd_global_radiation_forecast_camera",
+        }
+        hass.async_create_task(
+            hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={"source": "implicit_config_entry_create"},
+                data=forecast_camera_entry,
+            )
+        )
+    if entry.data.get("category") != "forecast_camera":
+        latitude = entry.data["latitude"]
+        longitude = entry.data["longitude"]
+        name = entry.data["name"]
 
-    # Initialize LocationDataUpdateCoordinator
-    name = entry.data["name"]
-    location_coordinator = LocationDataUpdateCoordinator(
-        hass,
-        hass.data[DOMAIN]["forecast_coordinator"],
-        hass.data[DOMAIN]["measurement_coordinator"],
-        name,
-    )
-    await location_coordinator.async_config_entry_first_refresh()
+        location = await api_client.get_location_by_name(name)
+        if location is None:
+            await api_client.add_location(
+                name=name, latitude=latitude, longitude=longitude
+            )
 
-    # Store only the location_coordinator in the entry's data
-    hass.data[DOMAIN][entry.entry_id] = {"location_coordinator": location_coordinator}
+        # Initialize LocationDataUpdateCoordinator
+        name = entry.data["name"]
+        location_coordinator = LocationDataUpdateCoordinator(
+            hass,
+            hass.data[DOMAIN]["forecast_coordinator"],
+            hass.data[DOMAIN]["measurement_coordinator"],
+            name,
+        )
+        await location_coordinator.async_config_entry_first_refresh()
 
-    # Perform the first data fetch for the new location immediately
-    await hass.data[DOMAIN]["measurement_coordinator"].async_request_refresh()
+        # Store only the location_coordinator in the entry's data
+        hass.data[DOMAIN][entry.entry_id] = {
+            "location_coordinator": location_coordinator
+        }
+
+        # Perform the first data fetch for the new location immediately
+        await hass.data[DOMAIN]["measurement_coordinator"].async_request_refresh()
+
+        # Forward setup to the sensor platform
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    else:
+        await hass.config_entries.async_forward_entry_setups(entry, ["camera"])
+
     await hass.data[DOMAIN]["forecast_coordinator"].async_request_refresh()
-
-    # Setup platforms (e.g., sensor)
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 
     return True
 
@@ -181,22 +205,48 @@ async def ensure_addon_started(
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
+    if entry.data.get("category") == "forecast_camera":
+        platforms = ["camera"]
+    else:
+        platforms = ["sensor"]
+
+    # Unload the specified platforms for the config entry
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
+
+    if unload_ok:
+        # Remove entry-specific data
+        if entry.entry_id in hass.data[DOMAIN]:
+            del hass.data[DOMAIN][entry.entry_id]
+
         # Check if there are any remaining entries
         if not hass.config_entries.async_entries(DOMAIN):
-            # Perform additional cleanup if this was the last entry
-            if "coordinator" in hass.data[DOMAIN]:
-                # Perform any cleanup for the coordinator if necessary
-                coordinator = hass.data[DOMAIN]["coordinator"]
-                await coordinator.async_shutdown()
-                hass.data[DOMAIN].pop("coordinator")
+            # Clean up the forecast coordinator
+            forecast_coordinator = hass.data[DOMAIN].get("forecast_coordinator")
+            if forecast_coordinator:
+                await forecast_coordinator.async_shutdown()
+                hass.data[DOMAIN].pop("forecast_coordinator", None)
+
+            # Clean up the measurement coordinator
+            measurement_coordinator = hass.data[DOMAIN].get("measurement_coordinator")
+            if measurement_coordinator:
+                await measurement_coordinator.async_shutdown()
+                hass.data[DOMAIN].pop("measurement_coordinator", None)
 
             # Clean up the API client if no locations are left
-            if "api_client" in hass.data[DOMAIN]:
-                api_client = hass.data[DOMAIN]["api_client"]
-                if not api_client.locations:
-                    hass.data[DOMAIN].pop("api_client")
+            api_client = hass.data[DOMAIN].get("api_client")
+            if api_client:
+                locations = (
+                    await api_client.locations()
+                )  # Ensure async method is awaited
+                if not locations:
+                    await (
+                        api_client.async_shutdown()
+                    )  # Ensure proper API client shutdown
+                    hass.data[DOMAIN].pop("api_client", None)
+
+            # Clean up the REST API setup
+            if "rest_api_setup" in hass.data[DOMAIN]:
+                hass.data[DOMAIN].pop("rest_api_setup", None)
 
     return unload_ok
 
@@ -207,14 +257,15 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     name = entry.data["name"]
 
     # Remove the location from the api_client
-    api_client.remove_location(name)
+    await api_client.remove_location(name)
 
     # Clean up the entry data
     if entry.entry_id in hass.data[DOMAIN]:
         hass.data[DOMAIN].pop(entry.entry_id)
 
     # Optionally, clean up the api_client if no locations are left
-    if not api_client.locations:
+    locations = await api_client.locations
+    if not locations:
         hass.data[DOMAIN].pop("api_client")
         # Check and remove forecast and measurement coordinators if they exist
         forecast_coordinator = hass.data[DOMAIN].get("forecast_coordinator")
@@ -239,7 +290,7 @@ async def wait_for_api_server(api_client, retries=5, delay=10):
                 api_client.get_status()
             )  # Assuming get_status is a method to check the API server status
             return True
-        except Exception as e:
+        except Exception:
             _LOGGER.warning(
                 f"API server not available, retrying in {delay} seconds... (Attempt {attempt+1}/{retries})"
             )

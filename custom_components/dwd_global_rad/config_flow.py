@@ -54,6 +54,7 @@ class DWDGlobalRadConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle the initial step."""
         errors: dict[str, str] = {}
+
         if user_input is not None:
             name = user_input[CONF_NAME]
 
@@ -65,6 +66,9 @@ class DWDGlobalRadConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 await self.async_set_unique_id(name)
                 self._abort_if_unique_id_configured()
+
+                # Add location entry
+                user_input["category"] = "location"
                 return self.async_create_entry(title=name, data=user_input)
 
         user_input = user_input or {
@@ -72,10 +76,17 @@ class DWDGlobalRadConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_LATITUDE: self.hass.config.latitude,
             CONF_LONGITUDE: self.hass.config.longitude,
         }
-        # Display the form with default values
+
+        # Display the form with default values and validation schema
         return self.async_show_form(
             step_id="user", data_schema=get_user_data_schema(self.hass), errors=errors
         )
+
+    async def async_step_implicit_config_entry_create(
+        self, data: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Handle the implicit creation of a config entry."""
+        return self.async_create_entry(title=data["name"], data=data)
 
 
 class CannotConnect(HomeAssistantError):
