@@ -30,8 +30,10 @@ class DWDGlobalRadRESTApi(HomeAssistantView):
 
         try:
             # location_name is automatically URL-decoded by HomeAssistantView
-            location = api_client.get_location_by_name(location_name)
-            forecast = location.get_forecast_for_future_hour(dt_now(), hours)
+
+            forecast = await api_client.get_forecast_for_future_hour(
+                location_name, hours
+            )
         except KeyError:
             return self.json({"error": "Location not found"}, status_code=404)
         except ValueError as e:

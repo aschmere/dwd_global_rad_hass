@@ -87,6 +87,12 @@ class DWDGlobalRadAPIClient:
                 return True
             else:
                 return False
+    
+    async def get_forecast_for_future_hour(self, location_name: str, number_of_hours: int):
+        self._log_debug_info(f"Fetching forecast for location: {location_name}, hours: {number_of_hours}")
+        url = f"{self.base_url}/locations/{location_name}/forecast/{number_of_hours}h"
+        async with self.session.get(url) as response:
+            return await response.json()
 
     async def close(self):
         self._log_debug_info("Closing session")
