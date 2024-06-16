@@ -7,9 +7,6 @@ import asyncio
 import logging
 import os
 
-import aiohttp
-import dwd_global_radiation as dgr
-
 from homeassistant.components.hassio import async_get_addon_info, async_start_addon
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME, Platform
