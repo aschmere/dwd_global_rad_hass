@@ -15,21 +15,29 @@ The DWD Global Radiation Home Assistant Integration is a custom component that a
 ## Installation
 This integration requires the DWD Global Radiation API Server add-on to be installed. The add-on provides the necessary API services for the integration to work correctly, especially the functionality of the `netCDF4` Python package, which is essential for processing DWD data.
 
-### Installation of the DWD Global Radiation Home Assistant Integration
+### Step 1: Register the Custom Repository with HACS
+Before installing the integration, the repository must be registered as a custom repository in HACS. Follow these steps:
 
-#### Step 1: Install the Integration via HACS
+1. Open Home Assistant and go to HACS.
+2. Click on the three dots in the top right corner and select "Custom repositories".
+3. Add the URL `https://github.com/aschmere/dwd_global_rad_hass` to the "Add custom repository" field.
+4. Choose the category as "Integration".
+5. Click "Add".
+
+### Step 2: Install the Integration via HACS
 To install this repository using HACS, click the button below:
 
 [![Open your Home Assistant instance and open this repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=aschmere&repository=dwd_global_rad_hass)
 
-#### Step 2: Reboot Home Assistant
+### Step 3: Reboot Home Assistant
 After installing the integration, reboot Home Assistant to apply the changes.
 
-#### Step 3: Add and Configure the Integration
+### Step 4: Add and Configure the Integration
 Once Home Assistant has restarted, you can add and configure the `DWD Global Radiation` integration using the config flow. To do this, go to the Home Assistant UI and navigate to `Configuration` > `Integrations` > `Add Integration`, then search for `DWD Global Radiation Forecasts and Data`.
 
 Alternatively, you can use the button below to start the configuration process directly:
 
 [![Open your Home Assistant instance and start setting up this integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=dwd_global_rad)
+
 
 
