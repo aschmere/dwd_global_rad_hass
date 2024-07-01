@@ -1,6 +1,8 @@
 import logging
 import time
 
+import aiohttp
+
 from homeassistant.components.camera import Camera
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -83,12 +85,30 @@ class DWDGlobalRadCamera(Camera):
             return
         self._last_update_time = current_time
         _LOGGER.debug("Fetching new forecast animation GIF")
-        image = await self.api_client.get_forecast_animated_gif()
-        if image:
-            self._last_image = image
-            self._attr_is_streaming = True
-        else:
+        try:
+            image = await self.api_client.get_forecast_animated_gif()
+            if image:
+                self._last_image = image
+                self._attr_is_streaming = True
+            else:
+                self._attr_is_streaming = False
+        except aiohttp.ServerDisconnectedError as err:
+            _LOGGER.error(
+                "Server disconnected while fetching forecast animation GIF: %s",
+                str(err),
+            )
             self._attr_is_streaming = False
+        except aiohttp.ClientError as err:
+            _LOGGER.error(
+                "Client error while fetching forecast animation GIF: %s", str(err)
+            )
+            self._attr_is_streaming = False
+        except Exception as err:
+            _LOGGER.error(
+                "Unexpected error while fetching forecast animation GIF: %s", str(err)
+            )
+            self._attr_is_streaming = False
+
         self.async_write_ha_state()
 
     @property

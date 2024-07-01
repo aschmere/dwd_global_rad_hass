@@ -13,6 +13,7 @@ from homeassistant.const import CONF_NAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.typing import ConfigType
 
 from .api_client import DWDGlobalRadAPIClient
 from .const import ADDON_SLUG, DOMAIN
@@ -69,13 +70,33 @@ async def update_listener(hass, entry):
     await hass.config_entries.async_reload(entry.entry_id)
 
 
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up the integration from YAML."""
+    hass.data.setdefault(DOMAIN, {})
+    if DOMAIN in config:
+        global_config = config[DOMAIN]
+    else:
+        global_config = {"use_addon": True, "hostname": "", "port_number": 5001}
+
+    hass.data[DOMAIN] = {
+        "use_addon": global_config.get("use_addon", True),
+        "hostname": global_config.get("hostname", ""),
+        "port_number": global_config.get("port_number", 5001),
+    }
+
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up DWD Global Radiation Forecasts and Data from a config entry."""
 
     _LOGGER.debug("Setup with data %s", entry.data)
     # entry.async_on_unload(entry.add_update_listener(update_listener))
 
-    use_addon = True
+    # Retrieve global configuration from hass.data
+    use_addon = hass.data[DOMAIN]["use_addon"]
+    hostname = hass.data[DOMAIN]["hostname"]
+    port_number = hass.data[DOMAIN]["port_number"]
 
     if use_addon:
         addon_info = await get_addon_config(hass, ADDON_SLUG)
@@ -87,9 +108,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Ensure the add-on is started
         await ensure_addon_started(hass, ADDON_SLUG)
-    else:
-        hostname = "192.168.2.165"
-        port_number = "5001"
 
     hass.data.setdefault(DOMAIN, {})
     if "api_client" not in hass.data[DOMAIN]:

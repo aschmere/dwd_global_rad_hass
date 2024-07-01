@@ -35,6 +35,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfIrradiance
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .abstract_sensor import AbstractGlobalRadiationSensor
 from .const import ATTR_API_GLOBAL_RADIATION_MEASUREMENT, DOMAIN
@@ -129,9 +130,30 @@ class GlobalRadiationMeasurementSensor(AbstractGlobalRadiationSensor):
                 "forecasts": forecast_presentation,
                 "measurements": measurement_presentation,
             }
+        else:
+            self._attr_native_value = None  # Mark the sensor as unavailable
+            self._attributes = {}
+            self._attr_available = False
 
     async def async_update(self):
         """Fetch new state data for the sensor."""
-        await super().async_update()
-        location_data = await self.coordinator.get_location_data()
-        self.update_state(location_data)
+        try:
+            await super().async_update()
+            location_data = await self.coordinator.get_location_data()
+            self.update_state(location_data)
+        except UpdateFailed as err:
+            if "Server disconnected" in str(err):
+                _LOGGER.error(
+                    "Server disconnected while fetching location data: %s", err
+                )
+            else:
+                _LOGGER.error("Unexpected error fetching location data: %s", err)
+            self.async_write_ha_state()
+        except Exception as err:
+            _LOGGER.error("Unexpected error: %s", err)
+            self.async_write_ha_state()
+
+    @property
+    def available(self):
+        """Return if the sensor is available."""
+        return self.coordinator.last_update_success
