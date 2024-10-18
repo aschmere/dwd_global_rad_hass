@@ -7,7 +7,6 @@ import asyncio
 import logging
 import os
 
-from homeassistant.components.hassio import async_get_addon_info, async_start_addon
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME, Platform
 from homeassistant.core import HomeAssistant
@@ -31,6 +30,34 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 _LOGGER = logging.getLogger(__name__)
 
 
+async def get_addon_info(hass: HomeAssistant, addon_slug: str):
+    """Fetch add-on information from the Supervisor API."""
+    supervisor_token = os.getenv("SUPERVISOR_TOKEN")
+    if not supervisor_token:
+        _LOGGER.error("Supervisor token not found in environment variables")
+        raise ConfigEntryNotReady("Supervisor token not found in environment variables")
+
+    supervisor_host = os.getenv("SUPERVISOR")
+    url = f"http://{supervisor_host}/addons/{addon_slug}/info"
+    headers = {
+        "Authorization": f"Bearer {supervisor_token}",
+        "Content-Type": "application/json",
+    }
+
+    session = async_get_clientsession(hass)
+    async with asyncio.timeout(
+        10
+    ):  # Replacing async_timeout.timeout with asyncio.timeout
+        async with session.get(url, headers=headers) as response:
+            response_text = await response.text()
+            if response.status != 200:
+                raise ConfigEntryNotReady(
+                    f"Error fetching add-on info: {response.status} - {response_text}"
+                )
+            data = await response.json()
+            return data["data"]
+
+
 async def get_addon_config(hass: HomeAssistant, addon_slug: str):
     """Fetch add-on configuration from Supervisor."""
     try:
@@ -41,7 +68,8 @@ async def get_addon_config(hass: HomeAssistant, addon_slug: str):
                 "Supervisor token not found in environment variables"
             )
 
-        url = f"http://supervisor/addons/{addon_slug}/info"
+        supervisor_host = os.getenv("SUPERVISOR")
+        url = f"http://{supervisor_host}/addons/{addon_slug}/info"
         headers = {
             "Authorization": f"Bearer {supervisor_token}",
             "Content-Type": "application/json",
@@ -195,19 +223,50 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
+async def start_addon(hass: HomeAssistant, addon_slug: str):
+    """Start the add-on using the Supervisor API."""
+    supervisor_token = os.getenv("SUPERVISOR_TOKEN")
+    if not supervisor_token:
+        _LOGGER.error("Supervisor token not found in environment variables")
+        raise ConfigEntryNotReady("Supervisor token not found in environment variables")
+
+    supervisor_host = os.getenv("SUPERVISOR")
+    url = f"http://{supervisor_host}/addons/{addon_slug}/start"
+    headers = {
+        "Authorization": f"Bearer {supervisor_token}",
+        "Content-Type": "application/json",
+    }
+
+    session = async_get_clientsession(hass)
+    try:
+        async with asyncio.timeout(
+            10
+        ):  # Use asyncio.timeout instead of async_timeout.timeout
+            async with session.post(url, headers=headers) as response:
+                response_text = await response.text()
+                if response.status != 200:
+                    raise ConfigEntryNotReady(
+                        f"Error starting add-on: {response.status} - {response_text}"
+                    )
+                return await response.json()
+    except TimeoutError:
+        _LOGGER.error(f"Timeout occurred when starting add-on {addon_slug}")
+        raise ConfigEntryNotReady(f"Timeout occurred when starting add-on {addon_slug}")
+
+
+# Updated function to ensure the add-on is started
 async def ensure_addon_started(
     hass: HomeAssistant, addon_slug: str, retries=10, delay=10
 ) -> None:
-    """Ensure the add-on is started."""
+    """Ensure the add-on is started using the Supervisor API."""
     for attempt in range(retries):
-        addon_info = await async_get_addon_info(hass, addon_slug)
+        addon_info = await get_addon_info(hass, addon_slug)
         if addon_info["state"] == "started":
             _LOGGER.debug("Add-on %s is already started", addon_slug)
             return
         _LOGGER.debug("Starting add-on %s", addon_slug)
         try:
-            await async_start_addon(hass, addon_slug)
-            # Wait a bit before checking the status again
+            await start_addon(hass, addon_slug)
             await asyncio.sleep(delay)
         except Exception as e:
             _LOGGER.error(f"Error starting add-on {addon_slug}: {e}")
